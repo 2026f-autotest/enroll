@@ -2,7 +2,7 @@
 
 **[点击领取作业仓库](https://github.com/2026f-autotest/enroll/issues/new?template=enroll.yml)**
 
-登录 GitHub，选择课程，提交申请。系统从申请人账号读取你的 GitHub 登录名，自动创建组织内的公开作业仓库、绑定身份并发送邀请，然后在申请下回复仓库链接。
+登录 GitHub，选择课程，提交申请。系统从申请人账号读取你的 GitHub 登录名，自动创建组织内的公开作业仓库、绑定身份并发送邀请，配置检查通过后，最后发布正式仓库名，再在申请下回复仓库链接。准备过程使用 `preparing-` 前缀，学员以机器人回复的正式链接为准。
 
 三个课程入口已通过真实 Issue / Actions 验证，见[维护记录](docs/VALIDATION.md)。
 

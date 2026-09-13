@@ -15,9 +15,28 @@
 
 `.github/ISSUE_TEMPLATE/enroll.yml` 是申请表，`.github/workflows/enroll.yml` 接收新 Issue 事件，`enroll.py` 读取申请人的 `issue.user.login` 并从 `courses.json` 选择固定模板。Issue 文本不会拼接进 shell，也不能指定其他人的 GitHub 账号。
 
-脚本复制全部模板分支，设置 `STUDENT_GITHUB`，授予该学员单个仓库写权限，触发 `check-config.yml`，最后回复仓库和邀请链接。学员提交代码后，由其作业仓库自己的 CI 评分及上传 OpenCamp。
+新申请按以下顺序执行：
+
+1. 检查申请人、公开模板、必需章节分支和组织 Secret 的共享范围。
+2. 复制全部模板分支到 `preparing-课程模板名-GitHub登录名`，设置 `STUDENT_GITHUB`。
+3. 触发 `check-config.yml`，读取 GitHub 返回的本次运行 ID，等待该运行和 `configuration` 作业都成功。
+4. 启用评测并分配学员写权限。
+5. **最后一次仓库配置写入是改成正式名称** `课程模板名-GitHub登录名`；用仓库 ID 核对改名结果。
+6. 回复正式仓库和邀请链接，关闭申请。
+
+GitHub 必须先有仓库才能绑定变量和运行 CI，因此“正式仓库最后出现”通过临时名称实现。准备失败时保留 `preparing-` 仓库供重试，不发布正式名称；准备阶段的评测和上传均跳过。邀请在最终改名前生成，学员使用机器人回复的正式邀请链接。已有正式仓库按原身份重新检查，不回退名称或覆盖代码。
+
+配置检查仅确认身份映射及课程 Secret 已注入，不检查 OpenCamp 报名，也不上传成绩。学员提交代码后，由其作业仓库自己的 CI 评分及上传 OpenCamp。
 
 没有名单收集、重复领取统计、报名名单查询或后台接入。重复申请沿用同名、同模板、同学员仓库，保留已有代码；不增加额外仓库。异常同名仓库不会被覆盖。
+
+## 重试与排队
+
+- 网络超时、连接中断及 HTTP 408/500/502/503/504：最多请求 4 次，普通退避为 2、4、8 秒。每次请求最多 30 秒，单个 API 操作预算为 180 秒。
+- 429 或明确的限流 403：遵守 `Retry-After` 和 `X-RateLimit-Reset`；没有有效提示时至少等待 60 秒。要求等待的时间超过剩余预算就明确失败，不提前重试。
+- 普通 401/403/404、参数错误不盲目重试。创建仓库、写身份变量、最终改名遇到响应丢失，会按固定名称及仓库 ID/身份核对，避免误覆盖。评论响应丢失不盲目重复发送。
+- 配置 CI 最多等 10 分钟；入口作业最多 20 分钟。只有本次配置作业实际成功才能交付，失败、跳过和超时均不当成成功。
+- 领取工作流串行处理，使用 GitHub `queue: max`，最多等待 100 个运行。超出队列容量、平台中断或作业超时时，Issue 仍保留，可由维护者手动重试。
 
 ## 处理失败申请
 
@@ -34,3 +53,7 @@
 - [新建 Issue 触发 Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#issues)
 - [默认 GITHUB_TOKEN 的仓库权限边界](https://docs.github.com/en/actions/concepts/security/github_token)
 - [从模板创建仓库 API](https://docs.github.com/en/rest/repos/repos#create-a-repository-using-a-template)
+
+- [GitHub API 重试和限流建议](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)
+- [配置检查的精确运行 ID](https://github.blog/changelog/2026-02-19-workflow-dispatch-api-now-returns-run-ids/)
+- [Actions 串行队列与容量](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)

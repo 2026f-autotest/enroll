@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch
 
@@ -7,6 +8,56 @@ import enroll
 def application(body=None):
     return {"number": 1, "user": {"login": "Student-123", "type": "User"},
             "body": body or "### 课程\n\n2073 · 专业阶段 - rCore-Tutorial\n"}
+
+
+class ProvisionServer:
+    """Deterministic API fault injection; real GitHub runs are recorded separately."""
+    def __init__(self):
+        self.final = "2026f-autotest/2026f-rcore-Student-123"
+        self.preparing = "2026f-autotest/preparing-2026f-rcore-Student-123"
+        self.template = "2026f-autotest/2026f-rcore"
+        self.created = self.published = False
+        self.lose_create = self.lose_rename = self.lose_variable = False
+        self.variable = None
+        self.visibility = "all"
+        self.calls = []
+        self.check_position = None
+
+    def check(self, repository):
+        self.check_position = len(self.calls)
+        return "https://github.com/" + repository + "/actions/runs/123"
+
+    def __call__(self, method, path, data=None, **options):
+        self.calls.append((method, path, data))
+        if path == "users/Student-123":
+            return {"type": "User", "login": "Student-123"}
+        if path == "repos/2026f-autotest/2026f-rcore":
+            return {"is_template": True, "private": False}
+        if "/actions/secrets/" in path:
+            return {"visibility": self.visibility}
+        if "/branches?" in path:
+            return [{"name": branch} for branch in enroll.COURSES["2073"]["branches"]]
+        if path.endswith("/generate"):
+            self.created = True
+            if self.lose_create:
+                raise enroll.GitHubError("Created but response lost; retry got HTTP 422", 422)
+            return {"id": 123}
+        if path.endswith("/variables/STUDENT_GITHUB"):
+            return self.variable
+        if path.endswith("/variables") and method == "POST":
+            self.variable = {"value": "Someone-Else" if self.lose_variable else data["value"]}
+            if self.lose_variable:
+                raise enroll.GitHubError("Variable response lost", 502, temporary=True)
+            return None
+        if method == "PATCH" and path == "repos/" + self.preparing:
+            self.published = True
+            if self.lose_rename:
+                raise enroll.GitHubError("Rename response lost", temporary=True)
+            return {"id": 123}
+        if path in ["repos/" + self.final, "repos/" + self.preparing]:
+            exists = self.published if path.endswith(self.final) else self.created
+            return {"id": 123, "template_repository": {"full_name": self.template}, "private": False} if exists else None
+        return None
 
 
 class EnrollmentTests(unittest.TestCase):
@@ -39,44 +90,145 @@ class EnrollmentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             enroll.parse_request(issue)
 
-    def test_new_repository_copies_all_chapters_and_binds_author(self):
-        course = enroll.COURSES["2073"]
+    def test_new_repository_is_published_only_after_configuration_passes(self):
+        server = ProvisionServer()
+        with patch.object(enroll, "api", side_effect=server), patch.object(
+                enroll, "check_configuration", side_effect=server.check):
+            url, check_url = enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        self.assertEqual(url, "https://github.com/" + server.final)
+        self.assertEqual(check_url, url + "/actions/runs/123")
+        writes = [(method, path, data) for method, path, data in server.calls if method != "GET"]
+        generate = next(data for method, path, data in writes if path.endswith("/generate"))
+        self.assertEqual(generate["name"], server.preparing.split("/", 1)[1])
+        self.assertTrue(generate["include_all_branches"])
+        self.assertFalse(generate["private"])
+        self.assertEqual(writes[-1][0], "PATCH")
+        self.assertEqual(writes[-1][2]["name"], server.final.split("/", 1)[1])
+        self.assertLess(server.check_position, len(server.calls) - 1)
+        self.assertTrue(server.published)
+
+    def test_failed_configuration_does_not_publish_or_invite(self):
+        server = ProvisionServer()
+        with patch.object(enroll, "api", side_effect=server), patch.object(
+                enroll, "check_configuration", side_effect=enroll.ConfigurationError("Failed", "https://github.com/check")):
+            with self.assertRaises(enroll.ConfigurationError):
+                enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        self.assertFalse(server.published)
+        self.assertFalse(any("/collaborators/" in path for _, path, _ in server.calls))
+
+    def test_bad_secret_preflight_creates_no_repository(self):
+        server = ProvisionServer()
+        server.visibility = "private"
+        with patch.object(enroll, "api", side_effect=server):
+            with self.assertRaisesRegex(ValueError, "public repositories"):
+                enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        self.assertFalse(server.created)
+        self.assertTrue(all(method == "GET" for method, _, _ in server.calls))
+
+    def test_lost_creation_and_rename_responses_recover_same_repository(self):
+        server = ProvisionServer()
+        server.lose_create = server.lose_rename = True
+        with patch.object(enroll, "api", side_effect=server), patch.object(
+                enroll, "check_configuration", side_effect=server.check):
+            url, _ = enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        self.assertEqual(url, "https://github.com/" + server.final)
+        self.assertTrue(server.published)
+        self.assertEqual(sum(path.endswith("/generate") for _, path, _ in server.calls), 1)
+        self.assertEqual(sum(method == "PATCH" for method, _, _ in server.calls), 1)
+
+    def test_existing_formal_repository_is_not_renamed(self):
+        server = ProvisionServer()
+        server.created = server.published = True
+        with patch.object(enroll, "api", side_effect=server), patch.object(
+                enroll, "check_configuration", side_effect=server.check):
+            enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        self.assertFalse(any(method == "PATCH" or path.endswith("/generate") for method, path, _ in server.calls))
+
+    def test_conflicting_final_name_is_never_overwritten(self):
+        with patch.object(enroll, "api", return_value={"id": 999}) as api:
+            with self.assertRaisesRegex(ValueError, "occupied"):
+                enroll.publish_repository("org/preparing-student", "org/student", 123)
+        self.assertEqual(api.call_count, 1)
+
+    def test_lost_variable_response_does_not_overwrite_other_identity(self):
+        server = ProvisionServer()
+        server.lose_variable = True
+        with patch.object(enroll, "api", side_effect=server), patch.object(enroll, "check_configuration") as check:
+            with self.assertRaisesRegex(ValueError, "another student"):
+                enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        check.assert_not_called()
+        self.assertFalse(server.published)
+
+    def test_configuration_waits_for_exact_dispatched_run(self):
         calls = []
+        responses = [None, {"status": "queued"}, {"status": "completed", "conclusion": "success"}]
 
-        def fake_api(method, path, data=None, missing_ok=False):
+        def fake_api(method, path, data=None, **options):
             calls.append((method, path, data))
-            if path == "repos/2026f-autotest/2026f-rcore":
-                return {"is_template": True, "private": False}
-            if "/actions/secrets/" in path:
-                return {"visibility": "all"}
-            if "/branches?" in path:
-                return [{"name": branch} for branch in course["branches"]]
-            return None
+            if path.endswith("/dispatches"):
+                self.assertTrue(data["return_run_details"])
+                return {"workflow_run_id": 123}
+            if path.endswith("/jobs"):
+                return {"jobs": [{"name": "configuration", "conclusion": "success"}]}
+            self.assertTrue(path.endswith("/actions/runs/123"))
+            return responses.pop(0)
 
-        with patch.object(enroll, "api", side_effect=fake_api):
-            url = enroll.provision("Student-123", "2073", course)
-        self.assertEqual(url, "https://github.com/2026f-autotest/2026f-rcore-Student-123")
-        generated = next(data for method, path, data in calls if path.endswith("/generate"))
-        self.assertEqual(generated["include_all_branches"], True)
-        self.assertEqual(generated["private"], False)
-        self.assertIn(("POST", "repos/2026f-autotest/2026f-rcore-Student-123/actions/variables",
-                       {"name": "STUDENT_GITHUB", "value": "Student-123"}), calls)
-        self.assertIn(("PUT", "repos/2026f-autotest/2026f-rcore-Student-123/collaborators/Student-123",
-                       {"permission": "push"}), calls)
-        self.assertEqual(calls[-1][1].split("/")[-2:], ["check-config.yml", "dispatches"])
+        with patch.object(enroll, "api", side_effect=fake_api), patch.object(enroll.time, "sleep"):
+            url = enroll.check_configuration("org/student")
+        self.assertEqual(url, "https://github.com/org/student/actions/runs/123")
+        self.assertEqual(len(calls), 5)
+
+    def test_configuration_failure_or_skipped_job_is_not_success(self):
+        cases = [({"status": "completed", "conclusion": "failure"}, None),
+                 ({"status": "completed", "conclusion": "success"},
+                  {"jobs": [{"name": "configuration", "conclusion": "skipped"}]})]
+        for run, jobs in cases:
+            with patch.object(enroll, "api", side_effect=[{"workflow_run_id": 123}, run, jobs]):
+                with self.assertRaises(enroll.ConfigurationError):
+                    enroll.check_configuration("org/student")
+
+    def test_configuration_timeout_remains_an_error(self):
+        with patch.object(enroll, "api", side_effect=[{"workflow_run_id": 123}, {"status": "queued"}]), \
+                patch.object(enroll.time, "monotonic", side_effect=[0, 0, 601]), \
+                patch.object(enroll.time, "sleep"):
+            with self.assertRaisesRegex(enroll.ConfigurationError, "10 minutes"):
+                enroll.check_configuration("org/student")
+
+    def test_failed_configuration_never_closes_issue_or_sends_success(self):
+        error = enroll.ConfigurationError("Secret missing", "https://github.com/org/repo/actions/runs/1")
+        with patch.dict(os.environ, {"GH_TOKEN": "test-only"}), \
+                patch.object(enroll, "provision", side_effect=error), patch.object(enroll, "api") as api:
+            with self.assertRaises(enroll.ConfigurationError):
+                enroll.process_application(application(), "https://github.com/run")
+        payloads = [call.args[2] for call in api.call_args_list]
+        self.assertIn({"state": "open"}, payloads)
+        self.assertNotIn({"state": "closed"}, payloads)
+        self.assertFalse(any("仓库已配置" in payload.get("body", "") for payload in payloads))
+
+    def test_notification_error_does_not_hide_original_failure(self):
+        original = ValueError("Original configuration failure")
+        with patch.dict(os.environ, {"GH_TOKEN": "test-only"}), \
+                patch.object(enroll, "provision", side_effect=original), \
+                patch.object(enroll, "api", side_effect=RuntimeError("Issue API also failed")):
+            with self.assertRaisesRegex(ValueError, "Original configuration failure"):
+                enroll.process_application(application(), "https://github.com/run")
+
+    def test_success_comment_and_close_follow_configuration_pass(self):
+        with patch.dict(os.environ, {"GH_TOKEN": "test-only"}), \
+                patch.object(enroll, "provision", return_value=("https://github.com/repo", "https://github.com/check")), \
+                patch.object(enroll, "api") as api:
+            enroll.process_application(application(), "https://github.com/run")
+        self.assertIn("本次配置检查已通过", api.call_args_list[0].args[2]["body"])
+        self.assertEqual(api.call_args_list[-1].args[2], {"state": "closed"})
 
     def test_existing_different_repository_is_not_modified(self):
-        def fake_api(method, path, data=None, missing_ok=False):
-            self.assertEqual(method, "GET")
-            if path.endswith("/2026f-rcore"):
-                return {"is_template": True, "private": False}
-            if "/actions/secrets/" in path:
-                return {"visibility": "all"}
-            return {"template_repository": {"full_name": "someone/else"}}
-
-        with patch.object(enroll, "api", side_effect=fake_api):
+        server = ProvisionServer()
+        server.created = server.published = True
+        server.template = "someone/else"
+        with patch.object(enroll, "api", side_effect=server):
             with self.assertRaisesRegex(ValueError, "left untouched"):
                 enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        self.assertTrue(all(method == "GET" for method, _, _ in server.calls))
 
 
 if __name__ == "__main__":
