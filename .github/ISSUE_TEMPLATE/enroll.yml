@@ -1,0 +1,20 @@
+name: 领取作业仓库
+description: 选择课程，系统用你的 GitHub 账号自动创建作业仓库并发送邀请。
+title: "领取作业仓库"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交后等待机器人回复，打开回复中的仓库邀请链接并接受邀请，即可开始实验。
+        无需填写 GitHub 用户名、安装 GitHub CLI 或提供 Token。
+        请同时在 OpenCamp 加入对应课程并绑定当前 GitHub 账号。
+  - type: dropdown
+    id: course
+    attributes:
+      label: 课程
+      options:
+        - "2074 · 基础阶段 - Rust 进阶 & OS 入门"
+        - "2073 · 专业阶段 - rCore-Tutorial"
+        - "2078 · 项目先导阶段 - 组件化操作系统"
+    validations:
+      required: true

@@ -1,0 +1,154 @@
+"""Create a course repository for the author of a GitHub Issue."""
+
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parent
+ORGANIZATION = "2026f-autotest"
+HUB = ORGANIZATION + "/enroll"
+COURSES = json.loads((ROOT / "courses.json").read_text())
+
+
+def api(method, path, data=None, missing_ok=False, issue=False):
+    env = os.environ.copy()
+    if issue:
+        env["GH_TOKEN"] = env["ISSUE_TOKEN"]
+    command = ["gh", "api", "--hostname", "github.com", "--method", method, path]
+    if data is not None:
+        command += ["--input", "-"]
+    result = subprocess.run(command, input=json.dumps(data) if data is not None else None,
+                            text=True, capture_output=True, env=env)
+    if result.returncode:
+        if missing_ok and "(HTTP 404)" in result.stderr:
+            return None
+        raise RuntimeError(f"{method} {path} failed ({result.returncode}):\n"
+                           f"{result.stdout}\n{result.stderr}")
+    return json.loads(result.stdout) if result.stdout.strip() else None
+
+
+def parse_request(issue):
+    if issue.get("pull_request") is not None:
+        raise ValueError("Pull requests are not enrollment applications.")
+    user = issue["user"]
+    login = user["login"]
+    if user.get("type") != "User" or not re.fullmatch(
+            r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?", login):
+        raise ValueError("The applicant must be a personal GitHub account.")
+    # Parse only the form's fixed course field. Never use a supplied account,
+    # template, repository path or command from the issue body.
+    matches = re.findall(r"^### 课程\s*\n+([^\n]+)", issue.get("body") or "", re.MULTILINE)
+    if len(matches) != 1:
+        raise ValueError("请使用“领取作业仓库”申请表，选择一门课程。")
+    choice = matches[0].strip()
+    for course_id, course in COURSES.items():
+        if choice == f"{course_id} · {course['title']}":
+            return login, course_id, course
+    raise ValueError("课程不在本期领取列表中，请重新选择课程。")
+
+
+def provision(login, course_id, course):
+    template = ORGANIZATION + "/" + course["template"]
+    source = api("GET", "repos/" + template)
+    if not source.get("is_template") or source.get("private"):
+        raise ValueError(template + " must be a public template repository.")
+    secret = api("GET", f"orgs/{ORGANIZATION}/actions/secrets/{course['secret']}")
+    if secret.get("visibility") != "all":
+        raise ValueError("The course organization secret must allow public repositories.")
+
+    repository = template + "-" + login
+    endpoint = "repos/" + repository
+    repo = api("GET", endpoint, missing_ok=True)
+    if repo is None:
+        api("POST", "repos/" + template + "/generate", {
+            "owner": ORGANIZATION, "name": course["template"] + "-" + login,
+            "private": False, "include_all_branches": True,
+            "description": f"OpenCamp {course_id} coursework for {login}",
+        })
+    else:
+        source_name = (repo.get("template_repository") or {}).get("full_name", "")
+        if source_name.lower() != template.lower() or repo.get("private"):
+            raise ValueError(repository + " already exists with a different source; left untouched.")
+        print("Using existing course repository; student code is preserved: " + repository)
+
+    for attempt in range(30):
+        branches = api("GET", endpoint + "/branches?per_page=100")
+        if set(course["branches"]).issubset({item["name"] for item in branches}):
+            break
+        if attempt == 29:
+            raise ValueError("Repository generation is incomplete; retry this application later.")
+        time.sleep(2)
+
+    variable_path = endpoint + "/actions/variables/STUDENT_GITHUB"
+    variable = api("GET", variable_path, missing_ok=True)
+    if variable is None:
+        api("POST", endpoint + "/actions/variables", {"name": "STUDENT_GITHUB", "value": login})
+    elif variable["value"].lower() != login.lower():
+        raise ValueError("Repository belongs to another student; identity was not overwritten.")
+
+    api("PUT", endpoint + "/actions/workflows/build.yml/enable")
+    api("PUT", endpoint + "/collaborators/" + login, {"permission": "push"})
+    api("POST", endpoint + "/actions/workflows/check-config.yml/dispatches", {"ref": "main"})
+    return "https://github.com/" + repository
+
+
+def main():
+    os.chdir(ROOT)
+    (ROOT / "tmp").mkdir(exist_ok=True)
+    os.environ["TMPDIR"] = str(ROOT / "tmp")
+    if os.environ.get("GITHUB_REPOSITORY") != HUB:
+        raise ValueError("Run this workflow only in " + HUB)
+    event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+    event_name = os.environ["GITHUB_EVENT_NAME"]
+    if event_name == "issues" and event.get("action") == "opened":
+        issue = event["issue"]
+    elif event_name == "workflow_dispatch":
+        number = os.environ.get("RETRY_ISSUE_NUMBER", "")
+        if not re.fullmatch(r"[1-9][0-9]*", number):
+            raise ValueError("Enter the numeric application issue number.")
+        issue = api("GET", f"repos/{HUB}/issues/{number}", issue=True)
+    else:
+        raise ValueError("Only new applications or maintainer retries are supported.")
+
+    number = issue["number"]
+    run_url = f"https://github.com/{HUB}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    try:
+        login, course_id, course = parse_request(issue)
+        if not os.environ.get("GH_TOKEN"):
+            raise ValueError("领取入口尚未配置 ENROLL_GITHUB_TOKEN，请维护者完成一次性建仓授权。")
+        url = provision(login, course_id, course)
+    except (ValueError, RuntimeError, OSError) as error:
+        # Full API details remain in the Actions log; never reflect arbitrary
+        # issue text or credentials into a public comment.
+        api("POST", f"repos/{HUB}/issues/{number}/comments", {
+            "body": f"本次领取未完成，请维护者查看[运行日志]({run_url})后重试该申请。学员无需填写 Token。",
+        }, issue=True)
+        raise error
+
+    body = (
+        f"@{login}，你的 **{course['title']}（{course_id}）** 作业仓库已配置。\n\n"
+        f"1. [接受仓库邀请]({url}/invitations)（已有访问权限时可直接进入仓库）。\n"
+        f"2. [打开作业仓库]({url})，按 README 克隆、完成实验并 push。\n"
+        f"3. 在 [Actions]({url}/actions) 查看评测和成绩上传结果。\n\n"
+        f"请在 [OpenCamp 本阶段](https://opencamp.cn/os2edu/camp/2026fall/stage/{course['stage']}) "
+        f"加入课程并绑定 **{login}**。无需配置 Token，也无需安装 GitHub CLI。\n\n"
+        "配置检查已触发；它不会提交成绩，实际成绩由之后的实验 push 触发评测上传。"
+    )
+    api("POST", f"repos/{HUB}/issues/{number}/comments", {"body": body}, issue=True)
+    api("PATCH", f"repos/{HUB}/issues/{number}", {"state": "closed"}, issue=True)
+    print(f"Enrolled {login}: course={course_id}, repository={url}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError, RuntimeError, OSError, KeyError) as error:
+        message = str(error)
+        for key in ("GH_TOKEN", "ISSUE_TOKEN"):
+            if os.environ.get(key):
+                message = message.replace(os.environ[key], "[REDACTED]")
+        sys.exit(message)

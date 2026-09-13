@@ -1,0 +1,31 @@
+name: 领取作业仓库
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 需要重试的申请 Issue 编号
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  enroll:
+    if: github.repository == '2026f-autotest/enroll' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Create repository, bind student and reply
+        env:
+          GH_TOKEN: ${{ secrets.ENROLL_GITHUB_TOKEN }}
+          ISSUE_TOKEN: ${{ github.token }}
+          RETRY_ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: python3 -u enroll.py
