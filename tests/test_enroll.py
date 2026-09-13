@@ -75,6 +75,7 @@ class EnrollmentTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "no early retry"):
                 core.publish_repository(server.preparing, server.final, 123)
         self.assertEqual(len(writes), 1)
+        self.assertEqual(len(server.calls), 2)  # No GET after a long rate-limit rejection.
         sleep.assert_not_called()
 
     def test_archived_repository_is_rejected_before_writes(self):
