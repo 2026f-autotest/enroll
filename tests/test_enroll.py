@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 import enroll
+import provision as core
 
 
 def application(body=None):
@@ -40,19 +41,19 @@ class ProvisionServer:
         if path.endswith("/generate"):
             self.created = True
             if self.lose_create:
-                raise enroll.GitHubError("Created but response lost; retry got HTTP 422", 422)
+                raise core.GitHubError("Created but response lost; retry got HTTP 422", 422)
             return {"id": 123}
         if path.endswith("/variables/STUDENT_GITHUB"):
             return self.variable
         if path.endswith("/variables") and method == "POST":
             self.variable = {"value": "Someone-Else" if self.lose_variable else data["value"]}
             if self.lose_variable:
-                raise enroll.GitHubError("Variable response lost", 502, temporary=True)
+                raise core.GitHubError("Variable response lost", 502, temporary=True)
             return None
         if method == "PATCH" and path == "repos/" + self.preparing:
             self.published = True
             if self.lose_rename:
-                raise enroll.GitHubError("Rename response lost", temporary=True)
+                raise core.GitHubError("Rename response lost", temporary=True)
             return {"id": 123}
         if path in ["repos/" + self.final, "repos/" + self.preparing]:
             exists = self.published if path.endswith(self.final) else self.created
@@ -61,6 +62,40 @@ class ProvisionServer:
 
 
 class EnrollmentTests(unittest.TestCase):
+    def test_rename_respects_long_rate_limit_without_outer_early_retry(self):
+        server = ProvisionServer()
+        server.created = True
+        writes = []
+        def limited(method, path, data=None, **options):
+            if method == "PATCH":
+                writes.append(path)
+                raise core.GitHubError("HTTP 429: wait 3600 seconds", 429, True, 3600)
+            return server(method, path, data, **options)
+        with patch.object(core, "api", side_effect=limited), patch.object(core.time, "sleep") as sleep:
+            with self.assertRaisesRegex(RuntimeError, "no early retry"):
+                core.publish_repository(server.preparing, server.final, 123)
+        self.assertEqual(len(writes), 1)
+        sleep.assert_not_called()
+
+    def test_archived_repository_is_rejected_before_writes(self):
+        with self.assertRaisesRegex(ValueError, "archived"):
+            core.validate_source({"archived": True}, "org/template")
+
+    def test_notification_failure_keeps_the_ready_repository_link(self):
+        calls = []
+        def notify(method, path, data=None, **options):
+            calls.append((method, path, data))
+            if len(calls) == 1:
+                raise RuntimeError("Comment response lost")
+        with patch.dict(os.environ, {"GH_TOKEN": "test-only"}), \
+                patch.object(enroll, "provision", return_value=("https://github.com/ready", "https://github.com/check")), \
+                patch.object(enroll, "api", side_effect=notify):
+            with self.assertRaisesRegex(RuntimeError, "Comment response lost"):
+                enroll.process_application(application(), "https://github.com/run")
+        self.assertIn("已准备完成", calls[-1][2]["body"])
+        self.assertIn("https://github.com/ready", calls[-1][2]["body"])
+        self.assertNotIn("本次领取未完成", calls[-1][2]["body"])
+
     def test_all_form_choices_map_to_fixed_catalog(self):
         for course_id, course in enroll.COURSES.items():
             issue = application(f"### 课程\n\n{course_id} · {course['title']}\n")
@@ -92,9 +127,9 @@ class EnrollmentTests(unittest.TestCase):
 
     def test_new_repository_is_published_only_after_configuration_passes(self):
         server = ProvisionServer()
-        with patch.object(enroll, "api", side_effect=server), patch.object(
-                enroll, "check_configuration", side_effect=server.check):
-            url, check_url = enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        with patch.object(core, "api", side_effect=server), patch.object(
+                core, "check_configuration", side_effect=server.check):
+            url, check_url = core.provision("Student-123", "2073", enroll.COURSES["2073"])
         self.assertEqual(url, "https://github.com/" + server.final)
         self.assertEqual(check_url, url + "/actions/runs/123")
         writes = [(method, path, data) for method, path, data in server.calls if method != "GET"]
@@ -109,28 +144,28 @@ class EnrollmentTests(unittest.TestCase):
 
     def test_failed_configuration_does_not_publish_or_invite(self):
         server = ProvisionServer()
-        with patch.object(enroll, "api", side_effect=server), patch.object(
-                enroll, "check_configuration", side_effect=enroll.ConfigurationError("Failed", "https://github.com/check")):
-            with self.assertRaises(enroll.ConfigurationError):
-                enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        with patch.object(core, "api", side_effect=server), patch.object(
+                core, "check_configuration", side_effect=core.ConfigurationError("Failed", "https://github.com/check")):
+            with self.assertRaises(core.ConfigurationError):
+                core.provision("Student-123", "2073", enroll.COURSES["2073"])
         self.assertFalse(server.published)
         self.assertFalse(any("/collaborators/" in path for _, path, _ in server.calls))
 
     def test_bad_secret_preflight_creates_no_repository(self):
         server = ProvisionServer()
         server.visibility = "private"
-        with patch.object(enroll, "api", side_effect=server):
+        with patch.object(core, "api", side_effect=server):
             with self.assertRaisesRegex(ValueError, "public repositories"):
-                enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+                core.provision("Student-123", "2073", enroll.COURSES["2073"])
         self.assertFalse(server.created)
         self.assertTrue(all(method == "GET" for method, _, _ in server.calls))
 
     def test_lost_creation_and_rename_responses_recover_same_repository(self):
         server = ProvisionServer()
         server.lose_create = server.lose_rename = True
-        with patch.object(enroll, "api", side_effect=server), patch.object(
-                enroll, "check_configuration", side_effect=server.check):
-            url, _ = enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        with patch.object(core, "api", side_effect=server), patch.object(
+                core, "check_configuration", side_effect=server.check):
+            url, _ = core.provision("Student-123", "2073", enroll.COURSES["2073"])
         self.assertEqual(url, "https://github.com/" + server.final)
         self.assertTrue(server.published)
         self.assertEqual(sum(path.endswith("/generate") for _, path, _ in server.calls), 1)
@@ -139,23 +174,23 @@ class EnrollmentTests(unittest.TestCase):
     def test_existing_formal_repository_is_not_renamed(self):
         server = ProvisionServer()
         server.created = server.published = True
-        with patch.object(enroll, "api", side_effect=server), patch.object(
-                enroll, "check_configuration", side_effect=server.check):
-            enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+        with patch.object(core, "api", side_effect=server), patch.object(
+                core, "check_configuration", side_effect=server.check):
+            core.provision("Student-123", "2073", enroll.COURSES["2073"])
         self.assertFalse(any(method == "PATCH" or path.endswith("/generate") for method, path, _ in server.calls))
 
     def test_conflicting_final_name_is_never_overwritten(self):
-        with patch.object(enroll, "api", return_value={"id": 999}) as api:
+        with patch.object(core, "api", return_value={"id": 999}) as api:
             with self.assertRaisesRegex(ValueError, "occupied"):
-                enroll.publish_repository("org/preparing-student", "org/student", 123)
+                core.publish_repository("org/preparing-student", "org/student", 123)
         self.assertEqual(api.call_count, 1)
 
     def test_lost_variable_response_does_not_overwrite_other_identity(self):
         server = ProvisionServer()
         server.lose_variable = True
-        with patch.object(enroll, "api", side_effect=server), patch.object(enroll, "check_configuration") as check:
+        with patch.object(core, "api", side_effect=server), patch.object(core, "check_configuration") as check:
             with self.assertRaisesRegex(ValueError, "another student"):
-                enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+                core.provision("Student-123", "2073", enroll.COURSES["2073"])
         check.assert_not_called()
         self.assertFalse(server.published)
 
@@ -173,8 +208,8 @@ class EnrollmentTests(unittest.TestCase):
             self.assertTrue(path.endswith("/actions/runs/123"))
             return responses.pop(0)
 
-        with patch.object(enroll, "api", side_effect=fake_api), patch.object(enroll.time, "sleep"):
-            url = enroll.check_configuration("org/student")
+        with patch.object(core, "api", side_effect=fake_api), patch.object(core.time, "sleep"):
+            url = core.check_configuration("org/student")
         self.assertEqual(url, "https://github.com/org/student/actions/runs/123")
         self.assertEqual(len(calls), 5)
 
@@ -183,22 +218,22 @@ class EnrollmentTests(unittest.TestCase):
                  ({"status": "completed", "conclusion": "success"},
                   {"jobs": [{"name": "configuration", "conclusion": "skipped"}]})]
         for run, jobs in cases:
-            with patch.object(enroll, "api", side_effect=[{"workflow_run_id": 123}, run, jobs]):
-                with self.assertRaises(enroll.ConfigurationError):
-                    enroll.check_configuration("org/student")
+            with patch.object(core, "api", side_effect=[{"workflow_run_id": 123}, run, jobs]):
+                with self.assertRaises(core.ConfigurationError):
+                    core.check_configuration("org/student")
 
     def test_configuration_timeout_remains_an_error(self):
-        with patch.object(enroll, "api", side_effect=[{"workflow_run_id": 123}, {"status": "queued"}]), \
-                patch.object(enroll.time, "monotonic", side_effect=[0, 0, 601]), \
-                patch.object(enroll.time, "sleep"):
-            with self.assertRaisesRegex(enroll.ConfigurationError, "10 minutes"):
-                enroll.check_configuration("org/student")
+        with patch.object(core, "api", side_effect=[{"workflow_run_id": 123}, {"status": "queued"}]), \
+                patch.object(core.time, "monotonic", side_effect=[0, 0, 601]), \
+                patch.object(core.time, "sleep"):
+            with self.assertRaisesRegex(core.ConfigurationError, "10 minutes"):
+                core.check_configuration("org/student")
 
     def test_failed_configuration_never_closes_issue_or_sends_success(self):
-        error = enroll.ConfigurationError("Secret missing", "https://github.com/org/repo/actions/runs/1")
+        error = core.ConfigurationError("Secret missing", "https://github.com/org/repo/actions/runs/1")
         with patch.dict(os.environ, {"GH_TOKEN": "test-only"}), \
                 patch.object(enroll, "provision", side_effect=error), patch.object(enroll, "api") as api:
-            with self.assertRaises(enroll.ConfigurationError):
+            with self.assertRaises(core.ConfigurationError):
                 enroll.process_application(application(), "https://github.com/run")
         payloads = [call.args[2] for call in api.call_args_list]
         self.assertIn({"state": "open"}, payloads)
@@ -225,9 +260,9 @@ class EnrollmentTests(unittest.TestCase):
         server = ProvisionServer()
         server.created = server.published = True
         server.template = "someone/else"
-        with patch.object(enroll, "api", side_effect=server):
+        with patch.object(core, "api", side_effect=server):
             with self.assertRaisesRegex(ValueError, "left untouched"):
-                enroll.provision("Student-123", "2073", enroll.COURSES["2073"])
+                core.provision("Student-123", "2073", enroll.COURSES["2073"])
         self.assertTrue(all(method == "GET" for method, _, _ in server.calls))
 
 

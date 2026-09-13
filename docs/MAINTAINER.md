@@ -13,7 +13,7 @@
 
 ## 日常流程
 
-`.github/ISSUE_TEMPLATE/enroll.yml` 是申请表，`.github/workflows/enroll.yml` 接收新 Issue 事件，`enroll.py` 读取申请人的 `issue.user.login` 并从 `courses.json` 选择固定模板。Issue 文本不会拼接进 shell，也不能指定其他人的 GitHub 账号。
+`.github/ISSUE_TEMPLATE/enroll.yml` 是申请表，`.github/workflows/enroll.yml` 接收新 Issue 事件，`enroll.py` 读取申请人的 `issue.user.login` 并从 `courses.json` 选择固定模板。Issue 文本不会拼接进 shell，也不能指定其他人的 GitHub 账号。仓库配置由公共模块 `provision.py` 执行；三个课程的备用 CLI 使用该模块的相同副本。
 
 新申请按以下顺序执行：
 
@@ -57,3 +57,9 @@ GitHub 必须先有仓库才能绑定变量和运行 CI，因此“正式仓库�
 - [GitHub API 重试和限流建议](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)
 - [配置检查的精确运行 ID](https://github.blog/changelog/2026-02-19-workflow-dispatch-api-now-returns-run-ids/)
 - [Actions 串行队列与容量](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+
+## 课程页面入口
+
+将[简明使用流程](COURSE_USAGE.md)放到课程页面，使用其中对应课程的领取链接。`base.yml`、`rcore.yml`、`arceos.yml` 已预选对应课程，学员直接提交申请。
+
+[代码审查与修复记录](AUDIT.md)记录维护者需要了解的验证结果和后续事项。

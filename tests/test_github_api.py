@@ -22,6 +22,14 @@ class GitHubRetryTests(unittest.TestCase):
         self.sleep = patch.object(github_api.time, "sleep").start()
         self.addCleanup(patch.stopall)
 
+    def test_explicit_no_retry_leaves_rate_wait_to_the_caller(self):
+        with patch.object(github_api.subprocess, "run", return_value=response(429, headers={"Retry-After": "90"})) as run:
+            with self.assertRaises(github_api.GitHubError) as error:
+                github_api.api("PATCH", "repos/org/preparing", {}, retry=False)
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(error.exception.retry_after, 90)
+        self.sleep.assert_not_called()
+
     def test_temporary_server_error_retries_and_parses_real_header_format(self):
         with patch.object(github_api.subprocess, "run", side_effect=[response(502), response(200, '{"ok":true}')]) as run:
             self.assertEqual(github_api.api("GET", "repos/org/repo"), {"ok": True})

@@ -21,10 +21,11 @@ def redact(message):
 
 
 class GitHubError(RuntimeError):
-    def __init__(self, message, status=None, temporary=False):
+    def __init__(self, message, status=None, temporary=False, retry_after=None):
         super().__init__(redact(message))
         self.status = status
         self.temporary = temporary
+        self.retry_after = retry_after
 
 
 def response_parts(output):
@@ -119,15 +120,15 @@ def api(method, path, data=None, missing_ok=False, issue=False, retry=None):
             delay = 2 ** attempt
         message = (f"{method} {path} failed (exit={result.returncode}, HTTP={status}):\n"
                    f"{result.stdout}\n{result.stderr}")
-        error = GitHubError(message, status, temporary=delay is not None)
+        error = GitHubError(message, status, temporary=delay is not None, retry_after=delay)
         # A rate-limit response rejected the request, so any method can retry.
-        can_retry = replay_safe or status in {403, 429}
+        can_retry = retry is not False and (replay_safe or status in {403, 429})
         if delay is None or not can_retry or attempt == MAX_ATTEMPTS:
             raise error
         print(str(error), flush=True)
         if time.monotonic() + delay + REQUEST_TIMEOUT > deadline:
             raise GitHubError(f"{message}\nRequired wait {delay}s exceeds the remaining "
-                              "request budget; no early retry was sent.", status, True)
+                              "request budget; no early retry was sent.", status, True, delay)
         print(f"Retry {attempt}/{MAX_ATTEMPTS - 1} in {delay}s: {method} {path}", flush=True)
         time.sleep(delay)
     raise AssertionError("Unreachable retry state")
