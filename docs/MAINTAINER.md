@@ -62,4 +62,13 @@ GitHub 必须先有仓库才能绑定变量和运行 CI，因此“正式仓库�
 
 将[简明使用流程](COURSE_USAGE.md)放到课程页面，使用其中对应课程的领取链接。`base.yml`、`rcore.yml`、`arceos.yml` 已预选对应课程，学员直接提交申请。
 
+## 修改申请标题和机器人回复
+
+- 新申请的默认标题：编辑 `.github/ISSUE_TEMPLATE/base.yml`、`rcore.yml` 或 `arceos.yml` 的 `title`，格式为 `[课程名称]作业仓库`。
+- 领取表单：同一文件中的 `name` 是入口名称，`body` 中的 `options` 是课程选项。课程名称与 `courses.json` 的 `title` 保持一致；通用表单同步修改 `enroll.yml`。
+- 以后自动发送的回复：编辑根目录 `enroll.py` 中 `process_application()` 的 `body` 文案，保留仓库、邀请、Actions 和配置检查链接。
+- 已经发送的回复：使用维护者账号打开 Issue，点击对应评论右上角 `… → Edit`，修改后点击 `Update comment`。已有 Issue 标题在页面标题旁点击 `Edit` 修改。
+
+修改文件后提交到 `main` 即可生效。已有评论需要单独编辑。
+
 [代码审查与修复记录](AUDIT.md)记录维护者需要了解的验证结果和后续事项。

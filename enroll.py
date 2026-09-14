@@ -30,7 +30,8 @@ def parse_request(issue):
         raise ValueError("请使用“领取作业仓库”申请表，选择一门课程。")
     choice = matches[0].strip()
     for course_id, course in COURSES.items():
-        if choice == f"{course_id} · {course['title']}":
+        # Keep earlier applications retryable after switching the form to course names.
+        if choice in (course["title"], f"{course_id} · {course['title']}"):
             return login, course_id, course
     raise ValueError("课程不在本期领取列表中，请重新选择课程。")
 
@@ -66,12 +67,12 @@ def process_application(issue, run_url):
             raise ValueError("领取入口尚未配置 ENROLL_GITHUB_TOKEN，请维护者完成一次性建仓授权。")
         url, check_url = provision(login, course_id, course)
         body = (
-            f"@{login}，你的 **{course['title']}（{course_id}）** 作业仓库已配置。\n\n"
+            f"@{login}，你的 **{course['title']}** 作业仓库已配置。\n\n"
             f"1. [接受仓库邀请]({url}/invitations)（已有访问权限时可直接进入仓库）。\n"
             f"2. [打开作业仓库]({url})，按 README 克隆、完成实验并 push。\n"
             f"3. 在 [Actions]({url}/actions) 查看评测和成绩上传结果。\n\n"
             f"请在 [OpenCamp 本阶段](https://opencamp.cn/os2edu/camp/2026fall/stage/{course['stage']}) "
-            f"加入课程并绑定 **{login}**。无需配置 Token，也无需安装 GitHub CLI。\n\n"
+            f"加入课程并绑定 **{login}**。\n\n"
             f"[本次配置检查已通过]({check_url})，确认身份映射和课程凭证已配置。"
             "配置检查不会提交成绩，实际成绩由之后的实验 push 触发评测上传。"
         )
@@ -79,7 +80,7 @@ def process_application(issue, run_url):
         api("PATCH", f"repos/{HUB}/issues/{number}", {"state": "closed"}, issue=True)
     except (ValueError, RuntimeError, OSError, KeyError) as error:
         print(redact(str(error)), flush=True)
-        message = f"本次领取未完成，请维护者查看[运行日志]({run_url})后重试该申请。学员无需填写 Token。"
+        message = f"本次领取未完成，请维护者查看[运行日志]({run_url})后重试该申请。"
         if url is not None:
             message = (f"[作业仓库]({url})已准备完成，[配置检查]({check_url})已通过。"
                        f"回复或关闭申请时发生错误，请维护者查看[运行日志]({run_url})后重试。")

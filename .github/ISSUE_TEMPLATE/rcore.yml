@@ -1,6 +1,6 @@
-name: 领取 2073 专业阶段 - rCore-Tutorial
+name: 专业阶段 - rCore-Tutorial
 description: 领取本课程的个人作业仓库
-title: "[领取 2073] 作业仓库"
+title: "[专业阶段 - rCore-Tutorial]作业仓库"
 body:
   - type: markdown
     attributes:
@@ -12,7 +12,7 @@ body:
     attributes:
       label: 课程
       options:
-        - "2073 · 专业阶段 - rCore-Tutorial"
+        - "专业阶段 - rCore-Tutorial"
       default: 0
     validations:
       required: true

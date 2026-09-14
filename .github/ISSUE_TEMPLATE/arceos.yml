@@ -1,6 +1,6 @@
-name: 领取 2078 项目先导阶段 - 组件化操作系统
+name: 项目先导阶段 - 组件化操作系统
 description: 领取本课程的个人作业仓库
-title: "[领取 2078] 作业仓库"
+title: "[项目先导阶段 - 组件化操作系统]作业仓库"
 body:
   - type: markdown
     attributes:
@@ -12,7 +12,7 @@ body:
     attributes:
       label: 课程
       options:
-        - "2078 · 项目先导阶段 - 组件化操作系统"
+        - "项目先导阶段 - 组件化操作系统"
       default: 0
     validations:
       required: true

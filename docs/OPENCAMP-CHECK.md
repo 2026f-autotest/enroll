@@ -22,6 +22,6 @@ Chrome 已打开秋冬季课程页面，但自动化连接随后只返回导航�
 
 > 作业仓库领取：<https://github.com/2026f-autotest/enroll/issues/new?template=enroll.yml>
 >
-> 登录 GitHub，选择本阶段课程并提交申请；机器人会回复作业仓库和邀请链接。接受邀请后按仓库 README 完成实验并 push，CI 自动评测并同步 OpenCamp。无需填写 Token 或安装 GitHub CLI。请在 OpenCamp 加入课程并绑定同一个 GitHub 账号。
+> 登录 GitHub，选择本阶段课程并提交申请；机器人会回复作业仓库和邀请链接。接受邀请后按仓库 README 完成实验并 push，CI 自动评测并同步 OpenCamp。请在 OpenCamp 加入课程并绑定同一个 GitHub 账号。
 
 本地证据：`tmp/opencamp-stage4.html`、`tmp/opencamp-stage5.html`、`tmp/opencamp-stage6.html`，以及 `tmp/opencamp-rank-2074.json`、`tmp/opencamp-rank-2073.json`、`tmp/opencamp-rank-2078.json`。榜单记录仅保留本次核对所需的公开字段。

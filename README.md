@@ -2,9 +2,9 @@
 
 | 课程 | 领取作业仓库 | 提交分支 |
 | --- | --- | --- |
-| 基础阶段：Rust 进阶 & OS 入门（2074） | [点击领取](https://github.com/2026f-autotest/enroll/issues/new?template=base.yml) | `main` |
-| 专业阶段：rCore（2073） | [点击领取](https://github.com/2026f-autotest/enroll/issues/new?template=rcore.yml) | `ch3`、`ch4`、`ch5`、`ch6`、`ch8` |
-| 项目先导阶段：组件化操作系统（2078） | [点击领取](https://github.com/2026f-autotest/enroll/issues/new?template=arceos.yml) | `main` |
+| 基础阶段 - Rust 进阶 & OS 入门 | [点击领取](https://github.com/2026f-autotest/enroll/issues/new?template=base.yml) | `main` |
+| 专业阶段 - rCore-Tutorial | [点击领取](https://github.com/2026f-autotest/enroll/issues/new?template=rcore.yml) | `ch3`、`ch4`、`ch5`、`ch6`、`ch8` |
+| 项目先导阶段 - 组件化操作系统 | [点击领取](https://github.com/2026f-autotest/enroll/issues/new?template=arceos.yml) | `main` |
 
 ## 使用流程
 

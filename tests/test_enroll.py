@@ -99,10 +99,12 @@ class EnrollmentTests(unittest.TestCase):
 
     def test_all_form_choices_map_to_fixed_catalog(self):
         for course_id, course in enroll.COURSES.items():
-            issue = application(f"### 课程\n\n{course_id} · {course['title']}\n")
-            login, selected, config = enroll.parse_request(issue)
-            self.assertEqual((login, selected), ("Student-123", course_id))
-            self.assertEqual(config, course)
+            for choice in (course["title"], f"{course_id} · {course['title']}"):
+                with self.subTest(choice=choice):
+                    issue = application(f"### 课程\n\n{choice}\n")
+                    login, selected, config = enroll.parse_request(issue)
+                    self.assertEqual((login, selected), ("Student-123", course_id))
+                    self.assertEqual(config, course)
 
     def test_student_identity_only_comes_from_issue_author(self):
         issue = application("### 课程\n\n2073 · 专业阶段 - rCore-Tutorial\n"
