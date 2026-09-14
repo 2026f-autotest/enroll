@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        请先在 [OpenCamp 本阶段](https://opencamp.cn/os2edu/camp/2026fall/stage/4) 加入课程，并绑定当前 GitHub 账号。
+        请先加入 [OpenCamp 秋冬季训练营](https://opencamp.cn/os2edu/camp/2026fall)，并绑定当前 GitHub 账号。
         点击下方 Create，等待机器人回复仓库和邀请链接。
   - type: dropdown
     id: course

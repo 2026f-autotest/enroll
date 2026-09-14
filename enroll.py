@@ -71,8 +71,8 @@ def process_application(issue, run_url):
             f"1. [接受仓库邀请]({url}/invitations)（已有访问权限时可直接进入仓库）。\n"
             f"2. [打开作业仓库]({url})，按 README 克隆、完成实验并 push。\n"
             f"3. 在 [Actions]({url}/actions) 查看评测和成绩上传结果。\n\n"
-            f"请在 [OpenCamp 本阶段](https://opencamp.cn/os2edu/camp/2026fall/stage/{course['stage']}) "
-            f"加入课程并绑定 **{login}**。\n\n"
+            "请先加入 [OpenCamp 秋冬季训练营](https://opencamp.cn/os2edu/camp/2026fall)，"
+            f"并绑定 GitHub 账号 **{login}**。\n\n"
             f"[本次配置检查已通过]({check_url})，确认身份映射和课程凭证已配置。"
             "配置检查不会提交成绩，实际成绩由之后的实验 push 触发评测上传。"
         )

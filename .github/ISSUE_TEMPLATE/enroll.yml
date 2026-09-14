@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         提交后等待机器人回复，打开回复中的仓库邀请链接并接受邀请，即可开始实验。
-        请同时在 OpenCamp 加入对应课程并绑定当前 GitHub 账号。
+        请先加入 [OpenCamp 秋冬季训练营](https://opencamp.cn/os2edu/camp/2026fall)，并绑定当前 GitHub 账号。
   - type: dropdown
     id: course
     attributes:

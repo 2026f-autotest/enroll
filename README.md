@@ -8,7 +8,7 @@
 
 ## 使用流程
 
-1. 在 OpenCamp 加入对应阶段，并绑定自己的 GitHub 账号。
+1. 加入 [OpenCamp 秋冬季训练营](https://opencamp.cn/os2edu/camp/2026fall)，并绑定自己的 GitHub 账号。
 2. 点击本课程的“领取作业仓库”，登录 GitHub 后点击 **Create** 提交申请。
 3. 等待机器人回复，接受仓库邀请，克隆回复中的作业仓库。
 4. 按仓库 README 完成实验和要求的报告，提交并 push 到对应分支。
