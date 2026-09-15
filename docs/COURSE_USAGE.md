@@ -1,4 +1,4 @@
-# 2026 秋冬季训练营实验提交
+# 学员指南
 
 1. 加入 [OpenCamp 秋冬季训练营](https://opencamp.cn/os2edu/camp/2026fall)，并绑定自己的 GitHub 账号。
 2. 点击本课程的“领取作业仓库”，登录 GitHub 后点击 **Create** 提交申请。

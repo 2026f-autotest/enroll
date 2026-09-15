@@ -15,4 +15,4 @@
 4. 按仓库 README 完成实验和要求的报告，提交并 push 到对应分支。
 5. 在仓库 **Actions** 查看评测结果，在 OpenCamp 查看成绩。
 
-[操作说明](docs/COURSE_USAGE.md) · [维护文档](docs/MAINTAINER.md)
+[学员指南](docs/COURSE_USAGE.md)
