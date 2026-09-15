@@ -1,4 +1,11 @@
 {
+  "2084": {
+    "title": "导学阶段-Rust 语言基础",
+    "template": "2026f-rustlings",
+    "secret": "OSCAMP_2026F_RUSTLINGS_TOKEN",
+    "branches": ["main"],
+    "stage": 2
+  },
   "2074": {
     "title": "基础阶段 - Rust 进阶 & OS 入门",
     "template": "2026f-oscamp-base",

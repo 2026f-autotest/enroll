@@ -4,7 +4,7 @@
 
 1. 保持 `2026f-autotest/enroll` 为公开仓库，启用 Issues 和 Actions。仅维护者有写权限。
 2. 在本仓库的 [Actions Secrets](https://github.com/2026f-autotest/enroll/settings/secrets/actions) 保存 `ENROLL_GITHUB_TOKEN`。它是有权在 `2026f-autotest` 创建仓库、设置 Actions 变量、分配协作者、触发配置检查及读取组织 Secret 元数据的维护者凭证。不要把它设成组织共享 Secret。
-3. 确认三个课程模板已启用 Template repository，课程组织 Secret 的访问范围均为 Public repositories。
+3. 确认四个课程模板已启用 Template repository，课程组织 Secret 的访问范围均为 Public repositories。
 4. 用维护者自己的 GitHub 账号提交一份领取申请，确认 Actions 成功、机器人回复链接、`STUDENT_GITHUB` 正确以及学员配置检查成功，再发布领取入口。
 
 默认 `GITHUB_TOKEN` 仅处理本仓库 Issue 回复和关闭；跨仓库操作使用 `ENROLL_GITHUB_TOKEN`。课程上传 Token 不会经过申请表或建仓脚本。
@@ -13,7 +13,7 @@
 
 ## 日常流程
 
-`.github/ISSUE_TEMPLATE/enroll.yml` 是申请表，`.github/workflows/enroll.yml` 接收新 Issue 事件，`enroll.py` 读取申请人的 `issue.user.login` 并从 `courses.json` 选择固定模板。Issue 文本不会拼接进 shell，也不能指定其他人的 GitHub 账号。仓库配置由公共模块 `provision.py` 执行；三个课程的备用 CLI 使用该模块的相同副本。
+`.github/ISSUE_TEMPLATE/enroll.yml` 是申请表，`.github/workflows/enroll.yml` 接收新 Issue 事件，`enroll.py` 读取申请人的 `issue.user.login` 并从 `courses.json` 选择固定模板。Issue 文本不会拼接进 shell，也不能指定其他人的 GitHub 账号。仓库配置由公共模块 `provision.py` 执行；四个课程的备用 CLI 使用该模块的相同副本。
 
 新申请按以下顺序执行：
 
@@ -60,11 +60,11 @@ GitHub 必须先有仓库才能绑定变量和运行 CI，因此“正式仓库�
 
 ## 课程页面入口
 
-将[简明使用流程](COURSE_USAGE.md)放到课程页面，使用其中对应课程的领取链接。`base.yml`、`rcore.yml`、`arceos.yml` 已预选对应课程，学员直接提交申请。
+将[简明使用流程](COURSE_USAGE.md)放到课程页面，使用其中对应课程的领取链接。`rustlings.yml`、`base.yml`、`rcore.yml`、`arceos.yml` 已预选对应课程，学员直接提交申请。
 
 ## 修改申请标题和机器人回复
 
-- 新申请的默认标题：编辑 `.github/ISSUE_TEMPLATE/base.yml`、`rcore.yml` 或 `arceos.yml` 的 `title`，格式为 `[课程名称]作业仓库`。
+- 新申请的默认标题：编辑 `.github/ISSUE_TEMPLATE/rustlings.yml`、`base.yml`、`rcore.yml` 或 `arceos.yml` 的 `title`，格式为 `[课程名称]作业仓库`。
 - 领取表单：同一文件中的 `name` 是入口名称，`body` 中的 `options` 是课程选项。课程名称与 `courses.json` 的 `title` 保持一致；通用表单同步修改 `enroll.yml`。
 - 以后自动发送的回复：编辑根目录 `enroll.py` 中 `process_application()` 的 `body` 文案，保留仓库、邀请、Actions 和配置检查链接。
 - 已经发送的回复：使用维护者账号打开 Issue，点击对应评论右上角 `… → Edit`，修改后点击 `Update comment`。已有 Issue 标题在页面标题旁点击 `Edit` 修改。
